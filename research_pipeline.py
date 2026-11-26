@@ -2,13 +2,13 @@
 import os
 from dotenv import load_dotenv
 from google import genai
-
 from planner import create_plan
 from researcher import search_web
 from analyzer import analyze_research
 from gap_detector import detect_research_gaps
 from verifier import verify_research
 from report_generator import generate_report
+import streamlit as st
 
 
 def run_research(topic, progress_callback=None):
@@ -22,14 +22,20 @@ def run_research(topic, progress_callback=None):
 
     # STEP 1: Validate input and initialize Gemini
     topic = topic.strip()
-
     if not topic:
         raise ValueError("Please enter a research topic.")
 
     load_dotenv()
-
     api_key = os.getenv("GEMINI_API_KEY")
 
+    # NEW: Try Streamlit Secrets if environment key is missing
+    if not api_key:
+        try:
+            api_key = st.secrets.get("GEMINI_API_KEY")
+        except (FileNotFoundError, KeyError):
+            api_key = None
+
+    # EXISTING: Validate Gemini API key
     if not api_key:
         raise ValueError("Gemini API key not found in .env")
 
@@ -37,7 +43,6 @@ def run_research(topic, progress_callback=None):
 
     # STEP 2: Create research plan
     update_progress("Creating research plan...")
-
     plan = create_plan(client, topic)
 
     for index, task in enumerate(plan, start=1):
@@ -48,9 +53,7 @@ def run_research(topic, progress_callback=None):
 
     for task in plan:
         update_progress(f"Researching: {task}")
-
         results = search_web(task)
-
         all_results.append({
             "task": task,
             "results": results
@@ -58,7 +61,6 @@ def run_research(topic, progress_callback=None):
 
     # STEP 4: Analyze collected research
     update_progress("Analyzing collected research...")
-
     analysis = analyze_research(
         client,
         topic,
@@ -74,7 +76,6 @@ def run_research(topic, progress_callback=None):
     }
 
     for round_number in range(1, MAX_FOLLOW_UP_ROUNDS + 1):
-
         update_progress(
             f"Checking research gaps - Round {round_number}..."
         )
@@ -101,18 +102,15 @@ def run_research(topic, progress_callback=None):
 
         for gap in new_gaps:
             update_progress(f"Follow-up research: {gap}")
-
             researched_tasks.add(gap.strip().lower())
 
             results = search_web(gap)
-
             all_results.append({
                 "task": gap,
                 "results": results
             })
 
         update_progress("Re-analyzing updated research...")
-
         analysis = analyze_research(
             client,
             topic,
@@ -121,7 +119,6 @@ def run_research(topic, progress_callback=None):
 
     # STEP 6: Verify evidence
     update_progress("Verifying research evidence...")
-
     verification_report = verify_research(
         client,
         topic,
